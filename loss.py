@@ -2,7 +2,10 @@ import torch
 from torch.nn import Module
 import torch.nn.functional as F
 
-def sinkhorn_divergence(output1, output2, M=1, k=2, n_iter=20, lambd=1., p=2):
+def euclidean_distance(output1, output2):
+    return distances = (output2 - output1).pow(2).sum(1)
+
+def sinkhorn_divergence(output1, output2, M=1, k=2, n_iter=20, lambd=0.05, p=2):
     bs = output1.size(0)
     x, y = output1, output2
     x, y = x.view((bs, M, k)), y.view((bs, M, k))
@@ -22,22 +25,26 @@ def sinkhorn_divergence(output1, output2, M=1, k=2, n_iter=20, lambd=1., p=2):
     return distances
 
 class ContrastiveLoss(Module):
-    def __init__(self, margin, M, k, lambd=.05):
+    def __init__(self, margin, M, k, lambd=0.05, distance='euclidean'):
         super(ContrastiveLoss, self).__init__()
         self.margin = margin
         self.eps = 1e-9
 
         self.M, self.k = M, k
         self.lambd = lambd
+        
+        self.distance = distance
 
     def forward(self, output1, output2, target):
     
         # Contrastive loss with Euclidean distance
-        #distances = (output2 - output1).pow(2).sum(1)
-        #losses = 0.5 * (target.float() * distances + (1 - target).float() * F.relu(self.margin - (distances + self.eps).sqrt()).pow(2))
+        if self.distance == 'euclidean':
+            distances = euclidean_distance(output1, output2)
+            losses = 0.5 * (target.float() * distances + (1 - target).float() * F.relu(self.margin - (distances + self.eps).sqrt()).pow(2))
         
         # Contrastive loss with Sinkhorn divergence
-        distances = sinkhorn_divergence(output1, output2, M=self.M, k=self.k, lambd=self.lambd)
-        losses = 0.5 * (target.float() * distances ** 2 + (1 - target.float()) * F.relu(self.margin - distances) ** 2)
+        elif self.distance == 'sinkhorn':
+            distances = sinkhorn_divergence(output1, output2, M=self.M, k=self.k, lambd=self.lambd)
+            losses = 0.5 * (target.float() * distances ** 2 + (1 - target.float()) * F.relu(self.margin - distances) ** 2)
         
-        return losses.mean()
+        return losses.mean(), distances
